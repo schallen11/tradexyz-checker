@@ -261,354 +261,222 @@ function PercentileBar({ rank, total }) {
   );
 }
 
-function LeaderboardTable({ rows, userAddress, rank }) {
-  if (!rows || rows.length === 0) return null;
+import Head from "next/head";
 
-  const medals = ["🥇", "🥈", "🥉"];
-
-  return (
-    <div style={S.lbSection}>
-      <h3 style={{ color: "#fff", marginBottom: 4 }}>🏆 HIP-3 Leaderboard — Top 20</h3>
-      <p style={{ color: "#8b949e", fontSize: 13, marginBottom: 20 }}>Hyperliquid · Ordenado por Volume</p>
-
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #21262d" }}>
-              {["Rank", "Trader", "Volume", "PnL", "ROI"].map((h) => (
-                <th key={h} style={{ color: "#8b949e", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "8px 12px", textAlign: "left", fontWeight: 600 }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((entry, i) => {
-              const addr = getEntryAddress(entry);
-              const isUser = addr.toLowerCase() === userAddress?.toLowerCase();
-              const vol = safeFloat(entry.vlm || entry.volume);
-              const entryPnl = safeFloat(entry.windowPnl || entry.pnl);
-              const entryRoi = safeFloat(entry.windowRoi || entry.roi) * 100;
-
-              return (
-                <tr key={i}
-                  style={{
-                    borderBottom: "1px solid #161b22",
-                    background: isUser ? "rgba(0,212,170,0.08)" : "transparent",
-                    outline: isUser ? "1px solid rgba(0,212,170,0.25)" : "none",
-                  }}>
-                  <td style={{ padding: "10px 12px", fontWeight: 700, color: "#8b949e", width: 60 }}>
-                    {medals[i] || `#${i + 1}`}
-                  </td>
-                  <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#58a6ff" }}>
-                    {shortAddr(addr)}
-                    {isUser && (
-                      <span style={{ background: "#00d4aa", color: "#000", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, marginLeft: 8 }}>
-                        VOCÊ
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: "10px 12px", fontWeight: 600, color: "#fff" }}>{fmoney(vol)}</td>
-                  <td style={{ padding: "10px 12px", color: entryPnl >= 0 ? "#00d4aa" : "#ff4d6d" }}>
-                    {entryPnl >= 0 ? "+" : ""}{fmoney(entryPnl)}
-                  </td>
-                  <td style={{ padding: "10px 12px", color: entryRoi >= 0 ? "#00d4aa" : "#ff4d6d" }}>
-                    {entryRoi >= 0 ? "+" : ""}{entryRoi.toFixed(2)}%
-                  </td>
-                </tr>
-              );
-            })}
-
-            {/* Se o usuário não está no top 20, mostra separador e linha dele */}
-            {rank > 20 && (
-              <>
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "center", color: "#8b949e", fontSize: 12, padding: 12, background: "#0d1117" }}>
-                    ··· {(rank - 21).toLocaleString()} traders ···
-                  </td>
-                </tr>
-                <tr style={{ background: "rgba(0,212,170,0.08)", outline: "1px solid rgba(0,212,170,0.25)" }}>
-                  <td style={{ padding: "10px 12px", fontWeight: 700, color: "#8b949e" }}>#{rank}</td>
-                  <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#58a6ff" }}>
-                    {shortAddr(userAddress)}
-                    <span style={{ background: "#00d4aa", color: "#000", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, marginLeft: 8 }}>VOCÊ</span>
-                  </td>
-                  <td colSpan={3} style={{ padding: "10px 12px", color: "#8b949e", fontSize: 12 }}>← sua posição</td>
-                </tr>
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+function fmt(v) {
+  const a = Math.abs(v), s = v < 0 ? "-" : "";
+  if (a >= 1e9) return s + "$" + (a/1e9).toFixed(2) + "B";
+  if (a >= 1e6) return s + "$" + (a/1e6).toFixed(2) + "M";
+  if (a >= 1e3) return s + "$" + (a/1e3).toFixed(2) + "K";
+  return s + "$" + a.toFixed(2);
 }
 
-/* ─────────────────────────────────────────────
-   Main Page
-───────────────────────────────────────────── */
+function pct(n, total) {
+  if (!total) return "?";
+  return ((n / total) * 100).toFixed(1) + "%";
+}
+
+function shortAddr(a) {
+  return a ? a.slice(0,6) + "..." + a.slice(-4) : "";
+}
+
+const PERIODS = [
+  { label: "All Time", value: "all_time" },
+  { label: "30 Days", value: "30d" },
+  { label: "7 Days", value: "7d" },
+  { label: "24h", value: "1d" },
+];
+
+const DEXES = [
+  { label: "TradeXYZ", value: "xyz" },
+  { label: "KiloMarkets", value: "km" },
+  { label: "Felix", value: "flx" },
+];
+
 export default function Home() {
-  const [address, setAddress] = useState("");
-  const [window, setWindow] = useState("allTime");
+  const [input, setInput] = useState("");
+  const [addr, setAddr] = useState("");
+  const [period, setPeriod] = useState("all_time");
+  const [dex, setDex] = useState("xyz");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
-  const [updatedAt, setUpdatedAt] = useState(null);
-  const inputRef = useRef(null);
+  const [err, setErr] = useState(null);
+  const [data, setData] = useState(null);
+  const [saved, setSaved] = useState([]);
 
-  const windowLabels = {
-    allTime: "All Time",
-    "30d": "30 Days",
-    "7d": "7 Days",
-    "24h": "24h",
-  };
+  useEffect(() => {
+    try { setSaved(JSON.parse(localStorage.getItem("hl_addrs") || "[]")); } catch {}
+  }, []);
 
-  const handleFetch = async () => {
-    const addr = address.trim();
-    if (!addr || addr.length < 10) {
-      setError("Cole um endereço de carteira válido (começa com 0x...)");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
+  async function fetchData(address, p, d) {
+    if (!address || address.length < 10) { setErr("Endereço inválido."); return; }
+    setLoading(true); setErr(null); setData(null);
     try {
-      // Cada chamada é independente — se uma falhar, as outras continuam
-      const [lbRaw, userStateRaw, fillsRaw] = await Promise.all([
-        fetchLeaderboard(window).catch(() => null),
-        hlPost({ type: "clearinghouseState", user: addr }).catch(() => null),
-        hlPost({ type: "userFills", user: addr, startTime: 0 }).catch(() => null),
+      const upd = [address, ...saved.filter(a => a !== address)].slice(0, 5);
+      setSaved(upd);
+      localStorage.setItem("hl_addrs", JSON.stringify(upd));
+
+      const [walletRes, lbRes] = await Promise.all([
+        fetch("/api/hs?path=wallet-hip3-stats/batch&addresses=" + address),
+        fetch("/api/hs?path=leaderboard&limit=2000&offset=0&period=" + p + "&sortBy=volume&dex=" + d),
       ]);
 
-      const leaderboard = parseLeaderboard(lbRaw);
-      const fills = Array.isArray(fillsRaw) ? fillsRaw : [];
-      const fillsStats = calcFillsStats(fills);
+      const walletJson = await walletRes.json();
+      const lbJson = await lbRes.json();
 
-      // Se não temos nem leaderboard nem fills nem estado da conta, algo está errado
-      if (!lbRaw && !userStateRaw && !fillsRaw) {
-        throw new Error("Nenhum dado retornado. Verifique se o endereço é válido.");
-      }
+      const wData = walletJson?.wallets?.[address]?.data || {};
+      const dexStats = wData?.byDex?.[d] || {};
+      const entries = lbJson?.data?.entries || [];
+      const total = entries.length;
 
-      // Acha o usuário no leaderboard
-      const addrLow = addr.toLowerCase();
-      let rank = -1;
-      let userEntry = {};
-      leaderboard.forEach((e, i) => {
-        if (getEntryAddress(e).toLowerCase() === addrLow) {
-          rank = i + 1;
-          userEntry = e;
-        }
-      });
+      const vol = dexStats.volume || wData.totalVolume || 0;
+      const pnl = dexStats.pnl || wData.totalPnl || 0;
+      const fees = dexStats.fees || wData.totalFees || 0;
+      const trades = dexStats.tradeCount || wData.totalTrades || 0;
 
-      // Account value
-      const accountValue = safeFloat(userStateRaw?.marginSummary?.accountValue);
+      const myEntry = entries.find(e => e.address?.toLowerCase() === address.toLowerCase());
+      const rank = myEntry?.rank_by_volume || null;
 
-      // Stats do usuário: leaderboard tem prioridade sobre fills
-      const volume = safeFloat(userEntry.vlm || userEntry.volume || fillsStats.volume);
-      const pnl = safeFloat(userEntry.windowPnl || userEntry.pnl || fillsStats.pnl);
-      const fees = safeFloat(userEntry.windowFees || fillsStats.fees);
-      const roi = safeFloat(userEntry.windowRoi || userEntry.roi) * 100;
+      const top10 = entries.slice(0, 10);
 
-      setResult({
-        leaderboard,
-        top20: leaderboard.slice(0, 20),
-        rank,
-        total: leaderboard.length,
-        volume, pnl, fees, roi, accountValue,
-        trades: fillsStats.trades,
-        coins: fillsStats.coins,
-        noLeaderboard: leaderboard.length === 0,
-      });
-      setUpdatedAt(new Date().toLocaleString("pt-BR"));
-    } catch (err) {
-      setError(`Erro ao buscar dados: ${err.message}. Verifique o endereço e tente novamente.`);
-    } finally {
-      setLoading(false);
-    }
-  };
+      setData({ vol, pnl, fees, trades, rank, total, top10, address });
+    } catch(e) { setErr("Erro: " + e.message); }
+    finally { setLoading(false); }
+  }
 
-  const handleKey = (e) => {
-    if (e.key === "Enter") handleFetch();
-  };
+  function search(e) {
+    e && e.preventDefault();
+    const a = input.trim();
+    setAddr(a); fetchData(a, period, dex);
+  }
 
-  const topPct = result && result.rank > 0 ? (result.rank / result.total) * 100 : null;
+  function changePeriod(p) { setPeriod(p); if (addr) fetchData(addr, p, dex); }
+  function changeDex(d) { setDex(d); if (addr) fetchData(addr, period, d); }
+
+  const C = { bg:"#0a0a0f", card:"#12121c", border:"#1e1e2e", green:"#00d4aa", red:"#ff4757", muted:"#666", accent:"#a0a8ff" };
+  const btn = (active) => ({ background: active ? "linear-gradient(135deg,#00d4aa,#0066ff)" : "#1a1a2e", border: active ? "none" : "1px solid #2a2a3e", borderRadius: 6, color:"#fff", padding:"5px 14px", cursor:"pointer", fontSize:12, fontWeight:600 });
 
   return (
     <>
-      <Head>
-        <title>TradeXYZ Tracker</title>
-        <meta name="description" content="Monitor sua posição no leaderboard HIP-3 do TradeXYZ" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-
-      <div style={S.page}>
-        {/* ── Header ── */}
-        <div style={S.header}>
-          <div style={S.logo}>📊</div>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 22, color: "#fff", fontWeight: 800 }}>TradeXYZ Tracker</h1>
-            <p style={{ fontSize: 13, color: "#8b949e" }}>Monitor seu ranking no leaderboard HIP-3 · Powered by Hyperliquid API</p>
+      <Head><title>TradeXYZ Tracker</title></Head>
+      <div style={{minHeight:"100vh", background:C.bg, color:"#e0e0e0", fontFamily:"monospace"}}>
+        <div style={{borderBottom:"1px solid "+C.border, padding:"16px 24px", display:"flex", alignItems:"center", gap:12}}>
+          <div style={{width:36, height:36, background:"linear-gradient(135deg,#00d4aa,#0066ff)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20}}>&#x1F4CA;</div>
+          <div>
+            <div style={{fontWeight:700, fontSize:18, color:"#fff"}}>TradeXYZ Tracker</div>
+            <div style={{fontSize:11, color:C.muted}}>HIP-3 Leaderboard + Stats · Powered by HypeStats &amp; Hyperliquid</div>
           </div>
-          {updatedAt && (
-            <div style={{ fontSize: 12, color: "#8b949e", textAlign: "right" }}>
-              <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 20, padding: "3px 12px", color: "#00d4aa", fontWeight: 600, fontSize: 12, marginBottom: 4 }}>
-                {windowLabels[window]}
+        </div>
+
+        <div style={{maxWidth:960, margin:"0 auto", padding:"24px 16px"}}>
+
+          <div style={{background:C.card, border:"1px solid "+C.border, borderRadius:12, padding:20, marginBottom:24}}>
+            <form onSubmit={search}>
+              <div style={{fontSize:11, color:C.muted, marginBottom:8, letterSpacing:1}}>ENDERECO DA CARTEIRA (HYPERLIQUID)</div>
+              <div style={{display:"flex", gap:10}}>
+                <input value={input} onChange={e=>setInput(e.target.value)} placeholder="0x1234...abcd"
+                  style={{flex:1, background:C.bg, border:"1px solid #2a2a3e", borderRadius:8, color:"#e0e0e0", padding:"10px 14px", fontSize:13, fontFamily:"monospace", outline:"none"}} />
+                <button type="submit" disabled={loading} style={{background:loading?"#1a1a2e":"linear-gradient(135deg,#00d4aa,#0066ff)", border:"none", borderRadius:8, color:"#fff", padding:"10px 24px", fontWeight:700, cursor:loading?"not-allowed":"pointer", fontSize:14}}>
+                  {loading ? "Buscando..." : "Buscar"}</button>
               </div>
-              Atualizado: {updatedAt}
+            </form>
+            {saved.length > 0 && (
+              <div style={{marginTop:12, display:"flex", flexWrap:"wrap", gap:8}}>
+                {saved.map(a => (
+                  <button key={a} onClick={()=>{setInput(a); setAddr(a); fetchData(a,period,dex);}}
+                    style={{background:"#1a1a2e", border:"1px solid #2a2a3e", borderRadius:6, color:C.green, fontSize:11, padding:"4px 10px", cursor:"pointer", fontFamily:"monospace"}}>
+                    {shortAddr(a)}</button>
+                ))}
+              </div>
+            )}
+            <div style={{marginTop:14, display:"flex", gap:16, flexWrap:"wrap"}}>
+              <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                <span style={{fontSize:12, color:C.muted}}>Periodo:</span>
+                {PERIODS.map(p => <button key={p.value} onClick={()=>changePeriod(p.value)} style={btn(period===p.value)}>{p.label}</button>)}
+              </div>
+              <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                <span style={{fontSize:12, color:C.muted}}>DEX:</span>
+                {DEXES.map(d => <button key={d.value} onClick={()=>changeDex(d.value)} style={btn(dex===d.value)}>{d.label}</button>)}
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* ── Input de endereço ── */}
-        <div style={S.searchCard}>
-          <label style={S.label}>🔍 Endereço da Carteira (Hyperliquid)</label>
-          <div style={S.inputRow}>
-            <input
-              ref={inputRef}
-              style={S.input}
-              type="text"
-              placeholder="0x1234...abcd — cole seu endereço aqui"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyDown={handleKey}
-              spellCheck={false}
-            />
-            <button
-              style={{ ...S.btnPrimary, opacity: loading ? 0.7 : 1 }}
-              onClick={handleFetch}
-              disabled={loading}
-            >
-              {loading ? "Buscando..." : "🔍 Buscar"}
-            </button>
           </div>
 
-          {/* Seletor de janela temporal */}
-          <div style={S.tabs}>
-            <span style={{ fontSize: 12, color: "#8b949e", lineHeight: "28px" }}>Período:</span>
-            {Object.entries(windowLabels).map(([key, label]) => (
-              <button
-                key={key}
-                style={{ ...S.tab, ...(window === key ? S.tabActive : {}) }}
-                onClick={() => setWindow(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {err && <div style={{background:"#1a0a0a", border:"1px solid #ff4757", borderRadius:8, padding:"12px 16px", marginBottom:20, color:"#ff4757", fontSize:13}}>Erro: {err}</div>}
 
-          <p style={{ fontSize: 12, color: "#8b949e", marginTop: 12 }}>
-            💡 Seu endereço fica apenas no seu navegador — nenhum dado é armazenado.
-          </p>
-        </div>
-
-        {/* ── Erro ── */}
-        {error && (
-          <div style={S.alertBox("error")}>⚠️ {error}</div>
-        )}
-
-        {/* ── Aviso leaderboard indisponível ── */}
-        {result?.noLeaderboard && (
-          <div style={S.alertBox("info")}>
-            ⚠️ O leaderboard completo não pôde ser carregado agora (limite da API).
-            Mostrando seus dados pessoais de trades abaixo.
-          </div>
-        )}
-
-        {/* ── Loading ── */}
-        {loading && (
-          <div style={S.alertBox("info")}>
-            ⏳ Buscando dados da API Hyperliquid... Isso pode levar alguns segundos.
-          </div>
-        )}
-
-        {/* ── Resultado ── */}
-        {result && (
-          <>
-            {/* Card principal do usuário */}
-            <div style={S.userCard}>
-              <div style={S.userCardTop} />
-
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
-                <div>
-                  <p style={{ fontSize: 14, color: "#8b949e", marginBottom: 6 }}>Sua posição no HIP-3 Leaderboard</p>
-                  <div style={{ fontSize: 52, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
-                    {result.rank > 0 ? `#${result.rank.toLocaleString()}` : "N/A"}
+          {data && (
+            <>
+              {data.rank && (
+                <div style={{background:"linear-gradient(135deg,#0d1f2d,#0d2d1f)", border:"1px solid #1e3a2e", borderRadius:12, padding:"20px 24px", marginBottom:24, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16}}>
+                  <div>
+                    <div style={{fontSize:11, color:C.muted, marginBottom:4}}>RANKING HIP-3 ({PERIODS.find(p=>p.value===period)?.label})</div>
+                    <div style={{fontSize:48, fontWeight:900, color:C.green}}>#{data.rank}</div>
+                    <div style={{fontSize:14, color:"#aaa", marginTop:2}}>Top {pct(data.rank, data.total)} de {data.total.toLocaleString()} traders</div>
                   </div>
-                  <div style={{ fontSize: 14, color: "#00d4aa", fontWeight: 600, marginTop: 4 }}>
-                    {result.rank > 0
-                      ? `Top ${topPct.toFixed(1)}% de ${result.total.toLocaleString()} traders`
-                      : `Não encontrado entre ${result.total.toLocaleString()} traders`}
-                  </div>
-                </div>
-
-                {result.rank > 0 && (
-                  <div style={{ textAlign: "right" }}>
-                    <p style={{ fontSize: 13, color: "#8b949e", marginBottom: 4 }}>Você supera</p>
-                    <div style={{ fontSize: 40, fontWeight: 800, color: "#00d4aa" }}>
-                      {(100 - topPct).toFixed(1)}%
-                    </div>
-                    <p style={{ fontSize: 12, color: "#8b949e" }}>dos traders</p>
-                  </div>
-                )}
-              </div>
-
-              <div style={S.statsGrid}>
-                <StatBox label="Volume Total" value={fmoney(result.volume)} />
-                <StatBox
-                  label="PnL"
-                  value={`${result.pnl >= 0 ? "+" : ""}${fmoney(result.pnl)}`}
-                  color={result.pnl >= 0 ? "#00d4aa" : "#ff4d6d"}
-                />
-                <StatBox
-                  label="Fees Pagas"
-                  value={`-${fmoney(Math.abs(result.fees))}`}
-                  color="#ff4d6d"
-                />
-                <StatBox
-                  label="ROI"
-                  value={`${result.roi >= 0 ? "+" : ""}${result.roi.toFixed(2)}%`}
-                  color={result.roi >= 0 ? "#00d4aa" : "#ff4d6d"}
-                />
-                <StatBox label="Valor da Conta" value={fmoney(result.accountValue)} />
-                <StatBox label="Trades" value={result.trades.toLocaleString()} />
-              </div>
-
-              {/* Coins negociadas */}
-              {result.coins.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <p style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                    Ativos Negociados ({result.coins.length})
-                  </p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {result.coins.slice(0, 30).sort().map((c) => (
-                      <span key={c} style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 20, padding: "3px 12px", fontSize: 12 }}>
-                        {c}
-                      </span>
-                    ))}
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:11, color:C.muted, marginBottom:4}}>CARTEIRA</div>
+                    <div style={{fontSize:14, color:C.accent}}>{shortAddr(data.address)}</div>
+                    <div style={{fontSize:11, color:C.muted, marginTop:4}}>{DEXES.find(d2=>d2.value===dex)?.label}</div>
                   </div>
                 </div>
               )}
+
+              <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16, marginBottom:24}}>
+                {[
+                  {label:"Volume", val:fmt(data.vol), color:"#fff"},
+                  {label:"PnL Realizado", val:fmt(data.pnl), color:data.pnl>=0?C.green:C.red},
+                  {label:"Taxas Pagas", val:"-"+fmt(data.fees), color:"#ff6b6b"},
+                  {label:"Total de Trades", val:data.trades.toLocaleString(), color:C.accent},
+                ].map(c => (
+                  <div key={c.label} style={{background:C.card, border:"1px solid "+C.border, borderRadius:12, padding:20}}>
+                    <div style={{fontSize:12, color:C.muted, marginBottom:6}}>{c.label}</div>
+                    <div style={{fontSize:22, fontWeight:700, color:c.color}}>{c.val}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{background:C.card, border:"1px solid "+C.border, borderRadius:12, padding:20, marginBottom:24}}>
+                <div style={{fontSize:12, color:C.muted, marginBottom:8}}>PnL Liquido (apos taxas)</div>
+                <div style={{fontSize:28, fontWeight:700, color:(data.pnl-data.fees)>=0?C.green:C.red}}>{fmt(data.pnl-data.fees)}</div>
+                <div style={{fontSize:12, color:"#555", marginTop:6}}>PnL {fmt(data.pnl)} - Fees {fmt(data.fees)}</div>
+              </div>
+
+              {data.top10.length > 0 && (
+                <div style={{background:C.card, border:"1px solid "+C.border, borderRadius:12, padding:20}}>
+                  <div style={{fontSize:14, fontWeight:700, color:"#fff", marginBottom:16}}>Top 10 - Leaderboard HIP-3 ({DEXES.find(d2=>d2.value===dex)?.label})</div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%", borderCollapse:"collapse", fontSize:12}}>
+                      <thead><tr style={{color:C.muted, borderBottom:"1px solid "+C.border}}>
+                        {["#","Endereco","Volume","PnL","Fees","Trades"].map(h=><th key={h} style={{padding:"8px 10px", textAlign:"left", fontWeight:600}}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {data.top10.map((e,i) => {
+                          const isMe = e.address?.toLowerCase() === data.address?.toLowerCase();
+                          return (
+                            <tr key={i} style={{borderBottom:"1px solid #0f0f1a", background:isMe?"#0d1f15":"transparent"}}>
+                              <td style={{padding:"8px 10px", color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":C.muted, fontWeight:700}}>#{e.rank_by_volume||i+1}</td>
+                              <td style={{padding:"8px 10px", color:isMe?C.green:C.accent, fontWeight:isMe?700:400}}>{shortAddr(e.address)}{isMe?" (voce)":""}</td>
+                              <td style={{padding:"8px 10px", color:"#fff"}}>{fmt(e.volume||0)}</td>
+                              <td style={{padding:"8px 10px", color:(e.pnl||0)>=0?C.green:C.red}}>{fmt(e.pnl||0)}</td>
+                              <td style={{padding:"8px 10px", color:"#ff6b6b"}}>-{fmt(e.fees||0)}</td>
+                              <td style={{padding:"8px 10px", color:C.muted}}>{(e.tradeCount||0).toLocaleString()}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!data && !loading && !err && (
+            <div style={{textAlign:"center", color:"#333", padding:"60px 0", fontSize:14}}>
+              <div style={{fontSize:48, marginBottom:16}}>&#x1F4CA;</div>
+              <div>Cole seu endereco para ver seu ranking no leaderboard HIP-3.</div>
             </div>
-
-            {/* Barra de percentil */}
-            <PercentileBar rank={result.rank > 0 ? result.rank : null} total={result.total} />
-
-            {/* Leaderboard */}
-            <LeaderboardTable rows={result.top20} userAddress={address} rank={result.rank} />
-
-            {/* Nota de rodapé */}
-            <div style={{ textAlign: "center", fontSize: 12, color: "#8b949e", paddingTop: 20, borderTop: "1px solid #21262d" }}>
-              Dados via{" "}
-              <a href="https://api.hyperliquid.xyz" target="_blank" rel="noreferrer">Hyperliquid API</a>
-              {" · "}
-              <a href="https://app.trade.xyz" target="_blank" rel="noreferrer">TradeXYZ</a>
-              {" · Nenhum dado armazenado — open source"}
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </>
   );
-}
+                            }
