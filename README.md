@@ -1,103 +1,43 @@
-# 📊 TradeXYZ Tracker
+# XYZ Checker (Next.js)
 
-Monitor pessoal do seu ranking no leaderboard HIP-3 do TradeXYZ, usando a API pública do Hyperliquid.
+DApp simples para rastrear:
+- Volume da sua carteira na XYZ
+- Seu ranking geral no leaderboard HIP-3 da XYZ
+- Seu percentil no ranking
+- Seu percentual de participação no volume total da XYZ
 
-## ✨ Funcionalidades
+## Fonte de dados escolhida
 
-- Cole seu endereço de carteira e veja seus dados em segundos
-- Rank e percentil entre todos os traders
-- Volume, PnL, Fees, ROI e valor da conta
-- Leaderboard Top 20 com sua posição destacada
-- Filtros por período: All Time, 30 dias, 7 dias, 24h
-- Nenhum dado é armazenado — tudo fica no seu navegador
+Este projeto usa a **API da Hypestats** (via backend `/api/xyz`) porque ela já expõe o leaderboard HIP-3 por DEX (`dex=xyz`) e os dados por carteira (`wallet-hip3-stats`).
 
----
+Motivo prático:
+- mais direto para calcular ranking e percentil da XYZ;
+- menor complexidade do que reconstruir tudo via endpoints brutos da Hyperliquid;
+- evita depender de endpoints não documentados do `app.trade.xyz`.
 
-## 🚀 Como fazer o deploy (GitHub + Vercel)
-
-### Passo 1 — Subir para o GitHub
-
-1. Crie uma conta em [github.com](https://github.com) se não tiver
-2. Clique em **"New repository"** (botão verde no canto superior direito)
-3. Dê o nome `tradexyz-tracker` e clique em **Create repository**
-4. Na sua máquina, abra o terminal na pasta do projeto e rode:
-
-```bash
-git init
-git add .
-git commit -m "primeiro commit: tradexyz tracker"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/tradexyz-tracker.git
-git push -u origin main
-```
-
-> Substitua `SEU_USUARIO` pelo seu usuário do GitHub.
-
----
-
-### Passo 2 — Deploy no Vercel (gratuito)
-
-1. Acesse [vercel.com](https://vercel.com) e faça login com sua conta GitHub
-2. Clique em **"Add New Project"**
-3. Selecione o repositório `tradexyz-tracker`
-4. Clique em **"Deploy"** — o Vercel detecta automaticamente que é Next.js
-
-✅ Em ~2 minutos seu site estará online em um endereço como:
-`https://tradexyz-tracker-seu-usuario.vercel.app`
-
----
-
-### Passo 3 — Atualizar o site no futuro
-
-Toda vez que você alterar um arquivo e rodar:
-
-```bash
-git add .
-git commit -m "minha atualização"
-git push
-```
-
-O Vercel faz o redeploy automaticamente!
-
----
-
-## 🛠️ Rodar localmente (opcional)
+## Rodar localmente
 
 ```bash
 npm install
 npm run dev
 ```
 
-Acesse: http://localhost:3000
+Abrir: `http://localhost:3000`
 
----
+## Build
 
-## 📁 Estrutura do projeto
-
-```
-tradexyz-tracker/
-├── pages/
-│   ├── index.js          ← Página principal (UI do tracker)
-│   ├── _app.js           ← Configuração do Next.js
-│   └── api/
-│       └── hl.js         ← Proxy para a API do Hyperliquid
-├── styles/
-│   └── globals.css       ← Estilos globais
-├── package.json
-└── next.config.js
+```bash
+npm run build
 ```
 
-## 🔧 Como funciona
+## Endpoint principal
 
-```
-Seu browser → /api/hl (Vercel) → api.hyperliquid.xyz → dados de volta
-```
+`GET /api/xyz?address=<wallet>&period=all_time|30d|7d|1d`
 
-O proxy (`/api/hl`) existe para evitar erros de CORS — o browser não pode
-chamar a API do Hyperliquid diretamente, mas o servidor Vercel pode.
-
----
-
-## 📄 Licença
-
-MIT — use, modifique e compartilhe à vontade.
+Resposta inclui:
+- `rank`
+- `percentile`
+- `walletShare`
+- `totalDexVolume`
+- `totalTraders`
+- `top10`
