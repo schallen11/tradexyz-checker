@@ -1,9 +1,3 @@
-diff --git a/pages/api/xyz.js b/pages/api/xyz.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..20e845ea866f36f791342885b67979616d0e2e15
---- /dev/null
-+++ b/pages/api/xyz.js
-@@ -0,0 +1,135 @@
 +const HS = "https://hypestats.xyz/api";
 +const MAX_PAGES = 30;
 +const PAGE_SIZE = 500;
